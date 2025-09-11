@@ -28,19 +28,34 @@ pub async fn run() {
 }
 
 async fn handler(sm: SlackMessage, workspace: &str, channel: &str) {
-    let chat_id = workspace.to_string() + channel;
+    let chat_id = format!("{}-{}", workspace, channel);
+
+    // Configure the chat model
     let co = ChatOptions {
         model: ChatModel::GPT35Turbo,
         restart: false,
-        system_prompt: None,
+        system_prompt: Some("You are a helpful assistant inside Slack."),
+        ..Default::default()
     };
-    log::debug!("get OpenAI settings");
-    let of = OpenAIFlows::new();
-    log::debug!("got text {}", &sm.text);
-    if let Ok(c) = of.chat_completion(&chat_id, &sm.text, &co).await {
-        log::debug!("got OpenAI response");
-        send_message_to_channel(&workspace, &channel, c.choice).await;
-        log::debug!("sent to slack");
+
+    let openai = OpenAIFlows::new();
+
+    // sm.text is already a String
+    let user_text = sm.text;
+
+    match openai.chat_completion(&chat_id, &user_text, &co).await {
+        Ok(response) => {
+            let reply = response.choice;
+            send_message_to_channel(workspace, channel, reply).await;
+        }
+        Err(err) => {
+            log::error!("OpenAI call failed: {:?}", err);
+            send_message_to_channel(
+                workspace,
+                channel,
+                "⚠️ Sorry, I couldn't process that request.".to_string(),
+            )
+            .await;
+        }
     }
-    log::debug!("done");
 }
