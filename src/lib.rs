@@ -6,6 +6,7 @@ use openai_flows::{
 };
 use slack_flows::{listen_to_channel, send_message_to_channel, SlackMessage};
 use std::env;
+use std::fs;
 
 #[no_mangle]
 #[tokio::main(flavor = "current_thread")]
@@ -24,13 +25,14 @@ pub async fn run() {
 
     log::debug!("Workspace is {} and channel is {}", workspace, channel);
 
+    // listen_to_channel is awaited here just like your working version
     listen_to_channel(&workspace, &channel, |sm| handler(sm, &workspace, &channel)).await;
 }
 
 async fn handler(sm: SlackMessage, workspace: &str, channel: &str) {
     let chat_id = format!("{}-{}", workspace, channel);
 
-    // Configure the chat model
+    // Configure the chat model (unchanged)
     let co = ChatOptions {
         model: ChatModel::GPT35Turbo,
         restart: false,
@@ -43,7 +45,21 @@ async fn handler(sm: SlackMessage, workspace: &str, channel: &str) {
     // sm.text is already a String
     let user_text = sm.text;
 
-    match openai.chat_completion(&chat_id, &user_text, &co).await {
+    // --- Memory injection: read the launch plan file and prepend as context ---
+    let launch_plan = fs::read_to_string("memory/launch_plan.txt").unwrap_or_default();
+    // Build the final prompt the model will receive
+    // Keep it concise: label the context and then the user request
+    let full_text = if launch_plan.trim().is_empty() {
+        user_text.clone()
+    } else {
+        format!(
+            "Context (Launch Plan):\n{}\n\nUser request:\n{}",
+            launch_plan.trim(),
+            user_text
+        )
+    };
+
+    match openai.chat_completion(&chat_id, &full_text, &co).await {
         Ok(response) => {
             let reply = response.choice;
             send_message_to_channel(workspace, channel, reply).await;
