@@ -31,7 +31,6 @@ pub async fn run() {
 async fn handler(sm: SlackMessage, workspace: &str, channel: &str) {
     let chat_id = format!("{}-{}", workspace, channel);
 
-    // Configure the chat model (unchanged)
     let co = ChatOptions {
         model: ChatModel::GPT35Turbo,
         restart: false,
@@ -40,24 +39,30 @@ async fn handler(sm: SlackMessage, workspace: &str, channel: &str) {
     };
 
     let openai = OpenAIFlows::new();
-
-    // sm.text is already a String
     let user_text = sm.text;
 
-    // --- Memory injection: read the launch plan file and prepend as context ---
+    // --- Memory injection: read the launch plan file ---
     let launch_plan_path = "memory/launch_plan.txt";
     let launch_plan = fs::read_to_string(launch_plan_path).unwrap_or_default();
 
     if launch_plan.trim().is_empty() {
-        log::warn!(
-            "⚠️ Launch plan file '{}' is missing or empty. Bot will only use user input.",
-            launch_plan_path
-        );
+        log::warn!("⚠️ Launch plan file '{}' missing or empty.", launch_plan_path);
+        // Send visible debug info into Slack
+        send_message_to_channel(
+            workspace,
+            channel,
+            format!("⚠️ No launch plan found at '{}'.", launch_plan_path),
+        )
+        .await;
     } else {
-        log::info!(
-            "✅ Launch plan loaded ({} chars).",
-            launch_plan.len()
-        );
+        log::info!("✅ Launch plan loaded ({} chars).", launch_plan.len());
+        // Send visible debug info into Slack
+        send_message_to_channel(
+            workspace,
+            channel,
+            format!("✅ Launch plan loaded into context ({} chars).", launch_plan.len()),
+        )
+        .await;
     }
 
     let full_text = if launch_plan.trim().is_empty() {
