@@ -12,7 +12,6 @@ use std::env;
 pub async fn run() {
     dotenv().ok();
     logger::init();
-
     let workspace: String = match env::var("slack_workspace") {
         Err(_) => "secondstate".to_string(),
         Ok(name) => name,
@@ -31,28 +30,18 @@ pub async fn run() {
 async fn handler(sm: SlackMessage, workspace: &str, channel: &str) {
     let chat_id = format!("{}-{}", workspace, channel);
 
-    // 🔹 Fetch launch plan dynamically from GitHub
-    let plan_url = "https://raw.githubusercontent.com/thebenewco/Slack-Chatgpt/main/memory/launch_plan.txt";
-    let launch_plan = match reqwest::get(plan_url).await {
-        Ok(resp) => resp.text().await.unwrap_or_else(|_| "".to_string()),
-        Err(_) => "".to_string(),
-    };
-
-    // Combine launch plan + user text
-    let user_text = format!(
-        "Context:\n{}\n\nUser request: {}",
-        launch_plan, sm.text
-    );
-
     // Configure the chat model
     let co = ChatOptions {
         model: ChatModel::GPT35Turbo,
         restart: false,
-        system_prompt: Some("You are a helpful assistant inside Slack. Always use the Launch Plan context when relevant."),
+        system_prompt: Some("You are a helpful assistant inside Slack."),
         ..Default::default()
     };
 
     let openai = OpenAIFlows::new();
+
+    // sm.text is already a String
+    let user_text = sm.text;
 
     match openai.chat_completion(&chat_id, &user_text, &co).await {
         Ok(response) => {
